@@ -5,6 +5,8 @@ import functools
 import logging
 import time
 import pika
+
+from pika.adapters.asyncio_connection import AsyncioConnection
 from pika.exchange_type import ExchangeType
 
 LOG_FORMAT = ('%(levelname) -10s %(asctime)s %(name) -30s %(funcName) '
@@ -55,11 +57,11 @@ class ExampleConsumer(object):
         When the connection is established, the on_connection_open method
         will be invoked by pika.
 
-        :rtype: pika.SelectConnection
+        :rtype: pika.adapters.asyncio_connection.AsyncioConnection
 
         """
         LOGGER.info('Connecting to %s', self._url)
-        return pika.SelectConnection(
+        return AsyncioConnection(
             parameters=pika.URLParameters(self._url),
             on_open_callback=self.on_connection_open,
             on_open_error_callback=self.on_connection_open_error,
@@ -78,7 +80,8 @@ class ExampleConsumer(object):
         been established. It passes the handle to the connection object in
         case we need it, but in this case, we'll just mark it unused.
 
-        :param pika.SelectConnection _unused_connection: The connection
+        :param pika.adapters.asyncio_connection.AsyncioConnection _unused_connection:
+           The connection
 
         """
         LOGGER.info('Connection opened')
@@ -88,7 +91,8 @@ class ExampleConsumer(object):
         """This method is called by pika if the connection to RabbitMQ
         can't be established.
 
-        :param pika.SelectConnection _unused_connection: The connection
+        :param pika.adapters.asyncio_connection.AsyncioConnection _unused_connection:
+           The connection
         :param Exception err: The error
 
         """
@@ -295,7 +299,8 @@ class ExampleConsumer(object):
         """
         LOGGER.info('Consumer was cancelled remotely, shutting down: %r',
                     method_frame)
-        self._channel.close()
+        if self._channel:
+            self._channel.close()
 
     def on_message(self, _unused_channel, basic_deliver, properties, body):
         """Invoked by pika when a message is delivered from RabbitMQ. The
@@ -362,11 +367,11 @@ class ExampleConsumer(object):
 
     def run(self):
         """Run the example consumer by connecting to RabbitMQ and then
-        starting the IOLoop to block and allow the SelectConnection to operate.
+        starting the IOLoop to block and allow the AsyncioConnection to operate.
 
         """
         self._connection = self.connect()
-        self._connection.ioloop.start()
+        self._connection.ioloop.run_forever()
 
     def stop(self):
         """Cleanly shutdown the connection to RabbitMQ by stopping the consumer
@@ -384,7 +389,7 @@ class ExampleConsumer(object):
             LOGGER.info('Stopping')
             if self._consuming:
                 self.stop_consuming()
-                self._connection.ioloop.start()
+                self._connection.ioloop.run_forever()
             else:
                 self._connection.ioloop.stop()
             LOGGER.info('Stopped')
