@@ -27,7 +27,7 @@ class ExamplePublisher(object):
     """
     EXCHANGE = 'message'
     EXCHANGE_TYPE = ExchangeType.topic
-    PUBLISH_INTERVAL = 1
+    PUBLISH_INTERVAL = 10
     QUEUE = 'text'
     ROUTING_KEY = 'example.text'
 
@@ -223,7 +223,7 @@ class ExamplePublisher(object):
         """
         LOGGER.info('Issuing consumer related RPC commands')
         self.enable_delivery_confirmations()
-        self.schedule_next_message()
+        # self.schedule_next_message()
 
     def enable_delivery_confirmations(self):
         """Send the Confirm.Select RPC method to RabbitMQ to enable delivery
@@ -312,14 +312,14 @@ class ExamplePublisher(object):
                                           content_type='application/json',
                                           headers=hdrs)
 
-        message = u'مفتاح قيمة 键 值 キー 値'
+        message = u'値'
         self._channel.basic_publish(self.EXCHANGE, self.ROUTING_KEY,
                                     json.dumps(message, ensure_ascii=False),
                                     properties)
         self._message_number += 1
         self._deliveries[self._message_number] = True
         LOGGER.info('Published message # %i', self._message_number)
-        self.schedule_next_message()
+        # self.schedule_next_message()
 
     def run(self):
         """Run the example code by connecting and then starting the IOLoop.
