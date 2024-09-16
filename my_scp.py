@@ -36,7 +36,7 @@ class Publisher(threading.Thread):
         print(f" [x] Sent '{message}' ")
 
     def publish(self, message):
-        print(f" [x] to publish '{message}' ")
+        # print(f" [x] to publish '{message}' ")
         self.connection.add_callback_threadsafe(lambda: self._publish(message))
 
     def stop(self):
@@ -92,6 +92,7 @@ class ExampleStorage(object):
 
         print(f'received SOP instance UID {self.currentSOPinstanceUID}')
         print(f'received instance Number {self.instanceNR}')
+        print(f'received patient  {ds['PatientName']}')
 
         #print(f'received json {ds_json}')
         publisher.publish(ds_json)
