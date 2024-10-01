@@ -33,10 +33,10 @@ class Publisher(threading.Thread):
 
     def _publish(self, message):
         self.channel.basic_publish("", routing_key=self.queue, body=message)
-        print(f" [x] Sent '{message}' ")
+        # print(f" [x] Sent '{message}' ")
 
     def publish(self, message):
-        # print(f" [x] to publish '{message}' ")
+        print(f" [x] to publish '{message}' ")
         self.connection.add_callback_threadsafe(lambda: self._publish(message))
 
     def stop(self):
