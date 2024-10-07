@@ -36,7 +36,7 @@ class Publisher(threading.Thread):
         # print(f" [x] Sent '{message}' ")
 
     def publish(self, message):
-        print(f" [x] to publish '{message}' ")
+        # print(f" [x] to publish '{message}' ")
         self.connection.add_callback_threadsafe(lambda: self._publish(message))
 
     def stop(self):
@@ -64,7 +64,7 @@ class ExampleStorage(object):
         self.instanceNR = ''
 
     def bulk_data_handler(self, data_element):
-        print(f'handler {data_element}')
+        # print(f'handler {data_element}')
         # try:
         #     os.makedirs(self.currentSOPinstanceUID, exist_ok=True)
         # except:
@@ -91,10 +91,10 @@ class ExampleStorage(object):
         ds_json = ds.to_json(128, bulk_data_element_handler=self.bulk_data_handler)
 
         print(f'received SOP instance UID {self.currentSOPinstanceUID}')
-        print(f'received instance Number {self.instanceNR}')
-        print(f'received patient  {ds['PatientName']}')
+        # print(f'received instance Number {self.instanceNR}')
+        # print(f'received patient  {ds['PatientName']}')
 
-        #print(f'received json {ds_json}')
+        # print(f'received json {ds_json}')
         publisher.publish(ds_json)
         return 0x0000
 
