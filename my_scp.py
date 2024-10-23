@@ -3,10 +3,13 @@ from pynetdicom import (
     AE, debug_logger, evt, AllStoragePresentationContexts,
     ALL_TRANSFER_SYNTAXES
 )
+from pydicom.tag import Tag
 import threading
 from pika import ConnectionParameters, BlockingConnection, PlainCredentials
 from pathlib import Path
 import json
+import requests
+from io import BytesIO
 
 # RabbitMQ 配置
 RABBITMQ_HOST = 'localhost'
@@ -61,25 +64,27 @@ class ExampleStorage(object):
             self.ae.add_supported_context(uid, ALL_TRANSFER_SYNTAXES)
         self.handlers = [(evt.EVT_C_STORE, self.handle_store)]
         self.currentSOPinstanceUID = ''
+        # Kubo API 地址，这里假设Kubo守护进程运行在本地，并且使用默认端口5001
+        self.api_url = 'http://127.0.0.1:5001/api/v0/add'
         self.instanceNR = ''
 
     def bulk_data_handler(self, data_element):
-        # print(f'handler {data_element}')
-        # try:
-        #     os.makedirs(self.currentSOPinstanceUID, exist_ok=True)
-        # except:
-        #     # Unable to create output dir, return failure status
-        #     return 0xC001
+        if data_element.VR in ['OB', 'OD', 'OF', 'OL', 'OV','OW']:
+            file_name = f'{data_element.tag:08x}'  # 将tag转换为十六进制字符串
+            # 准备POST请求的数据
+            files = {'file': (file_name, data_element.value)}
+            # 发送POST请求
+            response = requests.post(self.api_url, files=files)
+            
+            # 检查响应状态码
+            if response.status_code == 200:
+                result = response.json()
+                print(f'BulkData added to IPFS: {result["Hash"]}')
+                return result['Hash']
+            else:
+                print(f'Error adding BulkData to IPFS: {response.status_code} - {response.text}')
 
-        # path = Path(storage_dir) / f"{uuid.uuid4()}"
-        path = Path("/tmp/") / f"{self.currentSOPinstanceUID}"
-        with path.open('w') as f:
-            # Write the preamble, prefix, file meta information elements
-            #   and the raw encoded dataset to `f`
-            # f.write(data_element.pixel_array.tobytes())
-            json.dump(data_element.to_json(), f, indent=4)
-
-        return "binary_uri"
+        return data_element.value
 
     def handle_store(self, event):
         """Handle EVT_C_STORE events."""
@@ -88,7 +93,13 @@ class ExampleStorage(object):
 
         self.currentSOPinstanceUID = ds['SOPInstanceUID'].value
         self.instanceNR = ds['InstanceNumber'].value
-        ds_json = ds.to_json(128, bulk_data_element_handler=self.bulk_data_handler)
+        
+        # ds_json = ds.to_json(64, bulk_data_element_handler=self.bulk_data_handler)
+        ds_dict = ds.to_json_dict(512, bulk_data_element_handler=self.bulk_data_handler)
+        meta_dict = ds.file_meta.to_json_dict()
+        # 合并 FileMetaInformation 和 Dataset
+        combined_dict = {**ds_dict, **meta_dict}
+        ds_json = json.dumps(combined_dict, indent=4)
 
         print(f'received SOP instance UID {self.currentSOPinstanceUID}')
         # print(f'received instance Number {self.instanceNR}')
