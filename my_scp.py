@@ -119,6 +119,7 @@ class ExampleStorage(object):
         meta_dict = ds.file_meta.to_json_dict()
         # 合并 FileMetaInformation 和 Dataset
         combined_dict = {**ds_dict, **meta_dict}
+        # TODO: exception handling
         ds_json = json.dumps(combined_dict, indent=4)
 
         print(f'received SOP instance UID {self.currentSOPinstanceUID}')
