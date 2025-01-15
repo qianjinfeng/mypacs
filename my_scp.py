@@ -82,7 +82,7 @@ class ExampleStorage(object):
     def handle_echo(event):
         print("Received C-ECHO request")
         return 0x0000  # 返回状态码，0x0000表示成功
-    
+
     def bulk_data_handler(self, data_element):
         if data_element.VR in ['OB', 'OD', 'OF', 'OL', 'OV','OW']:
             file_name = f'{data_element.tag:08x}'  # 将tag转换为十六进制字符串
@@ -94,7 +94,7 @@ class ExampleStorage(object):
                 response.raise_for_status()  # 抛出HTTP错误
             except Exception as e:
                 print(f"Failed to store DICOM image to IPFS: {e}")
-            
+
             # 检查响应状态码
             if response.status_code == 200:
                 result = response.json()
@@ -111,9 +111,24 @@ class ExampleStorage(object):
         ds = event.dataset
         ds.file_meta = event.file_meta
 
+        # 检查并设置PatientSex默认值
+        if 'PatientSex' not in ds or not ds.PatientSex:
+            print("Setting default value for PatientSex.")
+            ds.PatientSex = 'O'  # 设置默认值为 'O' (Other)
+
+        # 检查并设置StudyID默认值
+        if 'StudyID' not in ds or not ds.StudyID:
+            print("Setting default value for StudyID.")
+            ds.StudyID = 'NOID'  # 设置默认值
+        
+        # 检查并设置PatientID默认值
+        if 'PatientID' not in ds or not ds.PatientID:
+            print("Setting default value for PatientID.")
+            ds.StudyID = 'NOID'  # 设置默认值
+
         self.currentSOPinstanceUID = ds['SOPInstanceUID'].value
         self.instanceNR = ds['InstanceNumber'].value
-        
+
         # ds_json = ds.to_json(64, bulk_data_element_handler=self.bulk_data_handler)
         ds_dict = ds.to_json_dict(512, bulk_data_element_handler=self.bulk_data_handler)
         meta_dict = ds.file_meta.to_json_dict()
@@ -141,7 +156,7 @@ if __name__ == "__main__":
     try:
 
         storager.run()
-        
+
     except KeyboardInterrupt:
         # publisher.stop()
         rabbitmq_connection.close()
