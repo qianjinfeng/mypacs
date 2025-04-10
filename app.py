@@ -4,7 +4,9 @@ from pynetdicom import (
     ALL_TRANSFER_SYNTAXES
 )
 from pynetdicom.sop_class import Verification
+import pydicom
 from pydicom.tag import Tag
+from pydicom.encaps import generate_pixel_data_frame
 import threading
 from pika import ConnectionParameters, BlockingConnection, PlainCredentials
 from pathlib import Path
@@ -77,6 +79,8 @@ class ExampleStorage(object):
         # Kubo API 地址，这里假设Kubo守护进程运行在本地，并且使用默认端口5001
         self.api_url = 'http://127.0.0.1:5001/api/v0/add'
         self.instanceNR = ''
+        self.transfer_syntax_uid = None  # 存储传输语法UID
+        self.number_of_frames = 1  # 默认单帧
 
     # 处理C-ECHO请求
     def handle_echo(event):
@@ -86,22 +90,74 @@ class ExampleStorage(object):
     def bulk_data_handler(self, data_element):
         if data_element.VR in ['OB', 'OD', 'OF', 'OL', 'OV','OW']:
             file_name = f'{data_element.tag:08x}'  # 将tag转换为十六进制字符串
-            # 准备POST请求的数据
-            files = {'file': (file_name, data_element.value)}
-            try:
-                # 发送POST请求
-                response = requests.post(self.api_url, files=files)
-                response.raise_for_status()  # 抛出HTTP错误
-            except Exception as e:
-                print(f"Failed to store DICOM image to IPFS: {e}")
+            if data_element.tag == pydicom.tag.Tag(0x7fe0, 0x0010):
+                if self.transfer_syntax_uid in [pydicom.uid.ExplicitVRLittleEndian, pydicom.uid.ImplicitVRLittleEndian]:
+                    # 处理未压缩的像素数据
+                    if self.number_of_frames > 1:
+                        # 计算每帧大小并分割数据
+                        rows = self.current_ds.Rows
+                        columns = self.current_ds.Columns
+                        samples_per_pixel = self.current_ds.SamplesPerPixel
+                        bits_allocated = self.current_ds.BitsAllocated
+                        bytes_per_pixel = ((bits_allocated + 7) // 8) * samples_per_pixel
+                        frame_size = rows * columns * bytes_per_pixel
+                        
+                        frames = [data_element.value[i:i+frame_size] for i in range(0, len(data_element.value), frame_size)]
+                    else:
+                        frames = [data_element.value]
+                    
+                    for i, chunk in enumerate(frames):
+                        file_name = f'{data_element.tag:08x}_frame_{i}'
+                        files = {'file': (file_name, chunk)}
+                        try:
+                            response = requests.post(self.api_url, files=files)
+                            response.raise_for_status()
+                        except Exception as e:
+                            print(f"Failed to store DICOM pixel to API: {e}")
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            print(f'BulkData added to API: {result["Hash"]}')
+                            return result['Hash']
+                        else:
+                            print(f'Error adding BulkData to API: {response.status_code} - {response.text}')
+                else:
+                    # 处理压缩的像素数据
+                    from pydicom.encaps import generate_pixel_data_frame
+                    frames = list(generate_pixel_data_frame(data_element.value))
+                    for i, chunk in enumerate(frames):
+                        file_name = f'{data_element.tag:08x}_frame_{i}'
+                        files = {'file': (file_name, chunk)}
+                        try:
+                            response = requests.post(self.api_url, files=files)
+                            response.raise_for_status()
+                        except Exception as e:
+                            print(f"Failed to store DICOM pixel to API: {e}")
 
-            # 检查响应状态码
-            if response.status_code == 200:
-                result = response.json()
-                print(f'BulkData added to IPFS: {result["Hash"]}')
-                return result['Hash']
+                        if response.status_code == 200:
+                            result = response.json()
+                            print(f'BulkData added to API: {result["Hash"]}')
+                            return result['Hash']
+                        else:
+                            print(f'Error adding BulkData to API: {response.status_code} - {response.text}')
+                        
+            # 如果不是PixelData，则直接上传
             else:
-                print(f'Error adding BulkData to IPFS: {response.status_code} - {response.text}')
+                files = {'file': (file_name, data_element.value)}
+                try:
+                    # 发送POST请求
+                    response = requests.post(self.api_url, files=files)
+                    response.raise_for_status()  # 抛出HTTP错误
+                except Exception as e:
+                    print(f"Failed to store DICOM other than pixel to IPFS: {e}")
+
+                # 检查响应状态码
+                if response.status_code == 200:
+                    result = response.json()
+                    print(f'BulkData added to IPFS: {result["Hash"]}')
+                    return result['Hash']
+                else:
+                    print(f'Error adding BulkData to IPFS: {response.status_code} - {response.text}')
 
         return data_element.value
         # return "blk_url"
@@ -126,8 +182,11 @@ class ExampleStorage(object):
             print("Setting default value for PatientID.")
             ds.StudyID = 'NOID'  # 设置默认值
 
+        self.current_ds = ds  # 存储当前数据集以便在bulk_data_handler中使用
         self.currentSOPinstanceUID = ds['SOPInstanceUID'].value
         self.instanceNR = ds['InstanceNumber'].value
+        self.transfer_syntax_uid = ds.file_meta.TransferSyntaxUID
+        self.number_of_frames = int(getattr(ds, 'NumberOfFrames', 1))  # 获取帧数，默认为1
 
         # ds_json = ds.to_json(64, bulk_data_element_handler=self.bulk_data_handler)
         ds_dict = ds.to_json_dict(512, bulk_data_element_handler=self.bulk_data_handler)
