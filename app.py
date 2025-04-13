@@ -105,42 +105,63 @@ class ExampleStorage(object):
                         frames = [data_element.value[i:i+frame_size] for i in range(0, len(data_element.value), frame_size)]
                     else:
                         frames = [data_element.value]
-                    
-                    for i, chunk in enumerate(frames):
-                        file_name = f'{data_element.tag:08x}_frame_{i}'
-                        files = {'file': (file_name, chunk)}
-                        try:
-                            response = requests.post(self.api_url, files=files)
-                            response.raise_for_status()
-                        except Exception as e:
-                            print(f"Failed to store DICOM pixel to API: {e}")
-                        
-                        if response.status_code == 200:
-                            result = response.json()
-                            print(f'BulkData added to API: {result["Hash"]}')
-                            return result['Hash']
-                        else:
-                            print(f'Error adding BulkData to API: {response.status_code} - {response.text}')
                 else:
                     # 处理压缩的像素数据
                     from pydicom.encaps import generate_pixel_data_frame
                     frames = list(generate_pixel_data_frame(data_element.value))
-                    for i, chunk in enumerate(frames):
-                        file_name = f'{data_element.tag:08x}_frame_{i}'
-                        files = {'file': (file_name, chunk)}
-                        try:
-                            response = requests.post(self.api_url, files=files)
-                            response.raise_for_status()
-                        except Exception as e:
-                            print(f"Failed to store DICOM pixel to API: {e}")
 
-                        if response.status_code == 200:
-                            result = response.json()
-                            print(f'BulkData added to API: {result["Hash"]}')
-                            return result['Hash']
+                # multiframe
+                if len(frames) > 1:
+                    files = []
+                    for i, chunk in enumerate(frames):
+                        file_name = f'{data_element.tag:08x}/frames/{i}'
+                        files.append(('path', (file_name, chunk)))
+
+                    params = {'recursive': True}
+                    try:
+                        response = requests.post(self.api_url, files=files)
+                        response.raise_for_status()
+                    except Exception as e:
+                        print(f"Failed to store DICOM pixel to API: {e}")
+                        return None
+                    
+                    if response.status_code == 200:
+                        cid_info = {}
+                        responses = response.text.split('\n')[:-1]  # 分割成单独的JSON对象
+                        for resp in responses:
+                            item = json.loads(resp)
+                            print(f"item: {item}")
+                            cid_info[item.get('Name')] = item.get('Hash')
+
+                        # 获取顶层目录的CID
+                        top_dir_cid = cid_info.get(f'{data_element.tag:08x}')
+                        if top_dir_cid is not None:
+                            print(f"Top directory CID: {top_dir_cid}")
+                            return top_dir_cid
                         else:
-                            print(f'Error adding BulkData to API: {response.status_code} - {response.text}')
-                        
+                            print("Top directory CID not found.")
+                            return None
+                    else:
+                        print(f'Error adding BulkData to API: {response.status_code} - {response.text}')
+                        return None
+                # only 1 image
+                else:
+                    files = {'file': (file_name, frames[0])}
+                    try:
+                        # 发送POST请求
+                        response = requests.post(self.api_url, files=files)
+                        response.raise_for_status()  # 抛出HTTP错误
+                    except Exception as e:
+                        print(f"Failed to store DICOM other than pixel to IPFS: {e}")
+
+                    # 检查响应状态码
+                    if response.status_code == 200:
+                        result = response.json()
+                        print(f'BulkData added to IPFS: {result["Hash"]}')
+                        return result['Hash']
+                    else:
+                        print(f'Error adding BulkData to IPFS: {response.status_code} - {response.text}')
+
             # 如果不是PixelData，则直接上传
             else:
                 files = {'file': (file_name, data_element.value)}
