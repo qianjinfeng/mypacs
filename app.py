@@ -91,6 +91,7 @@ class ExampleStorage(object):
         if data_element.VR in ['OB', 'OD', 'OF', 'OL', 'OV','OW']:
             file_name = f'{data_element.tag:08x}'  # 将tag转换为十六进制字符串
             if data_element.tag == pydicom.tag.Tag(0x7fe0, 0x0010):
+                frames = []
                 if self.transfer_syntax_uid in [pydicom.uid.ExplicitVRLittleEndian, pydicom.uid.ImplicitVRLittleEndian]:
                     # 处理未压缩的像素数据
                     if self.number_of_frames > 1:
